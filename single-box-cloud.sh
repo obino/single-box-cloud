@@ -55,7 +55,6 @@ if [ ! -e /root/.ssh/id_rsa ]; then
         ssh-keygen -t rsa -N '' -f /root/.ssh/id_rsa
 fi
 cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
-ssh-keyscan 172.16.0.1 $FE_HOST | tee /root/.ssh/known_hosts
 
 # Install and start libvirtd
 yum install -y libvirt.x86_64
@@ -96,6 +95,9 @@ fi
 
 # Restart the network to use the settings created above
 service network restart
+
+# Setup SSH known_hosts
+ssh-keyscan 172.16.0.1 $FE_HOST | tee /root/.ssh/known_hosts
 
 # Disable the firewall on the system
 cp /etc/sysconfig/system-config-firewall /etc/sysconfig/system-config-firewall.ol
