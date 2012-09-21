@@ -55,7 +55,7 @@ if [ ! -e /root/.ssh/id_rsa ]; then
         ssh-keygen -t rsa -N '' -f /root/.ssh/id_rsa
 fi
 cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
-ssh-keyscan 172.16.0.1 | tee .ssh/known_hosts
+ssh-keyscan 172.16.0.1 $FE_HOST | tee /root/.ssh/known_hosts
 
 # Install and start libvirtd
 yum install -y libvirt.x86_64
@@ -130,7 +130,7 @@ yum -y install eucalyptus-nc eucalyptus-cc eucalyptus-sc eucalyptus-walrus
 # Set eucalyptus.conf depending on the mode
 if [ "$SELFCONTAINED" = "Y" ]; then
         # comment network defaults
-        sed -i -e 's/^VNET/#VNET"/g' /etc/eucalyptus/eucalyptus.conf
+        sed -i -e 's/^VNET/#VNET/g' /etc/eucalyptus/eucalyptus.conf
 
         # add the networking
         cat >>/etc/eucalyptus/eucalyptus.conf <<EOF
@@ -142,8 +142,10 @@ VNET_PUBINTERFACE="br1"
 VNET_BRIDGE="br0"
 VNET_SUBNET="172.16.128.0"
 VNET_NETMASK="255.255.128.0"
+VNET_DNS="8.8.8.8"
 VNET_ADDRSPERNET="16"
 VNET_PUBLICIPS="172.16.1.100-172.16.1.150"
+VNET_DHCPDAEMON="/usr/sbin/dhcpd41"
 EOF
 
 else
@@ -169,10 +171,10 @@ done
 sleep 3
 
 # Register components
-euca_conf --register-walrus --partition walrus --host $FE_HOST --component walrus-single
-euca_conf --register-cluster --partition cluster01 --host $FE_HOST --component cc-single
-euca_conf --register-sc --partition cluster01 --host $FE_HOST --component sc-single
-euca_conf --register-nodes "172.16.0.1"
+euca_conf --skip-scp-hostcheck --register-walrus --partition walrus --host $FE_HOST --component walrus-single
+euca_conf --skip-scp-hostcheck --register-cluster --partition cluster01 --host $FE_HOST --component cc-single
+euca_conf --skip-scp-hostcheck --register-sc --partition cluster01 --host $FE_HOST --component sc-single
+euca_conf --skip-scp-hostcheck --register-nodes "172.16.0.1"
 
 mkdir /root/creds
 cd /root/creds/
