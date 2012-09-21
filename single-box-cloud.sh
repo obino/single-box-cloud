@@ -7,7 +7,6 @@
 
 # defaults
 VERSION="1.0"
-VERBOSE="N"
 
 # SELFCONTAINED defined the operation mode: if set to Y, it will not ask
 # questions and setup a cloud fully contained within the machine, with *NO*
@@ -22,8 +21,7 @@ usage () {
         echo
         echo "Options:"
         echo "   -w      configured to be world accessible (will ask about IPs etc ...)"
-        echo "   -v      be verbose"
-        echo "   -V      vertsion"
+        echo "   -V      version"
         echo
 
         exit 0
@@ -37,10 +35,6 @@ while [ $# -gt 0 ]; do
                 SELFCONTAINED="N"
                 shift
         fi
-        if [ "$1" = "-v" ]; then 
-                VERBOSE="Y"
-                shift
-        fi
         if [ "$1" = "-V" ]; then 
                 echo "Version: $VERSION"
                 shift
@@ -52,7 +46,7 @@ done
 
 # Make registration easier later
 if [ ! -e /root/.ssh/id_rsa ]; then
-        ssh-keygen -t rsa -N '' -f /root/.ssh/id_rsa
+        ssh-keygen -t rsa -N '' -f /root/.ssh/id_rsa 
 fi
 cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
 
@@ -150,6 +144,8 @@ VNET_PUBLICIPS="172.16.1.100-172.16.1.150"
 VNET_DHCPDAEMON="/usr/sbin/dhcpd41"
 EOF
 
+        # ensure the CLC will register on the internal IP
+        sed -i -e "s/^CLOUD_OPTS=\"\"/CLOUD_OPTS=\"-i ${FE_HOST}\"/" /etc/eucalyptus/eucalyptus.conf
 else
         vim /etc/eucalyptus/eucalyptus.conf
 fi
