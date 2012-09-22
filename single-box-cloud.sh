@@ -150,6 +150,12 @@ else
         vim /etc/eucalyptus/eucalyptus.conf
 fi
 
+# workaround for EUCA-2049 (-i isn't obeyed): all interfaces going down
+IFACES="`ifconfig |sed 's/[ \t].*//;/^$/d;/lo/d;/br1/d'`"
+for x in $IFACES; do
+        ifdown $x
+done
+
 # Initialize Eucalyptus
 euca_conf --initialize
 
@@ -167,6 +173,11 @@ for x in 8443 8773 8774 8775 8777; do
 done
 
 sleep 3
+
+# workaround for EUCA-2049 (-i isn't obeyed): all interfaces comes up now
+for x in $IFACES; do
+        ifup $x
+done
 
 # Register components
 euca_conf --skip-scp-hostcheck --register-walrus --partition walrus --host $FE_HOST --component walrus-single
