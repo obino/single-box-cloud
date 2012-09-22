@@ -7,13 +7,13 @@
 
 # defaults
 VERSION="1.0"
+FE_HOST=""
 
 # SELFCONTAINED defined the operation mode: if set to Y, it will not ask
 # questions and setup a cloud fully contained within the machine, with *NO*
 # connectivity to the outsite world (public IP will be bogus, and
 # instances will be accessible only from the machine itself)
 SELFCONTAINED="Y"
-FE_HOST="172.16.1.1"          # default CLC IP when in selfcontained mode
 
 # usage ...
 usage () {
@@ -30,10 +30,9 @@ usage () {
 # set command line arguments
 while [ $# -gt 0 ]; do
         if [ "$1" = "-w" ]; then 
-                echo "Not Implemented yet"
-                exit 0
                 SELFCONTAINED="N"
                 shift
+                continue
         fi
         if [ "$1" = "-V" ]; then 
                 echo "Version: $VERSION"
@@ -84,14 +83,10 @@ IPADDR=172.16.1.1
 NETMASK=255.255.255.0
 NETWORK=172.16.1.0
 EOF
-
 fi
 
 # Restart the network to use the settings created above
 service network restart
-
-# Setup SSH known_hosts
-ssh-keyscan 172.16.0.1 $FE_HOST | tee /root/.ssh/known_hosts
 
 # Disable the firewall on the system
 cp /etc/sysconfig/system-config-firewall /etc/sysconfig/system-config-firewall.ol
@@ -124,9 +119,10 @@ yum groupinstall -y eucalyptus-cloud-controller
 yum -y install eucalyptus-nc eucalyptus-cc eucalyptus-sc eucalyptus-walrus
 
 # Set eucalyptus.conf depending on the mode
+sed -i -e 's/^VNET/#VNET/g' /etc/eucalyptus/eucalyptus.conf # comment network defaults
 if [ "$SELFCONTAINED" = "Y" ]; then
-        # comment network defaults
-        sed -i -e 's/^VNET/#VNET/g' /etc/eucalyptus/eucalyptus.conf
+        # default CLC IP when in selfcontained mode
+        FE_HOST="172.16.1.1"
 
         # add the networking
         cat >>/etc/eucalyptus/eucalyptus.conf <<EOF
@@ -146,15 +142,49 @@ EOF
 
         # ensure the CLC will register on the internal IP
         sed -i -e "s/^CLOUD_OPTS=\"\"/CLOUD_OPTS=\"-i ${FE_HOST}\"/" /etc/eucalyptus/eucalyptus.conf
+
+        # workaround for EUCA-2049 (-i isn't obeyed): all interfaces going down
+        IFACES="`ifconfig |sed 's/[ \t].*//;/^$/d;/lo/d;/br1/d'`"
+        for x in $IFACES; do
+                ifdown $x
+        done
 else
-        vim /etc/eucalyptus/eucalyptus.conf
+        # need to find our the main interface
+        MAIN_IFACE="`ip route show|grep default|sed 's/.*dev \([[:alnum:]]*\) .*/\1/'`"
+        if [ -z "${MAIN_IFACE}" ]; then
+                echo "Failed to detect default interface"
+                read -p "Enter the public interface of the cloud -> " MAIN_IFACE
+        fi
+
+        # let's get the IP address of the main interface
+        FE_HOST="`ip -f inet addr show ${MAIN_IFACE}|grep inet|sed 's:.*inet \([0-9.]*\)/.*:\1:'`"
+        if [ -z "$FE_HOST" ]; then
+                echo "Failed to detect IP of dev ${MAIN_IFACE}"
+                read -p "Enter address of ${MAIN_IFACE} -> " FE_HOST
+        fi
+
+        PUBLIC_IPS=""
+        read -p "Enter a set of public IPs to be used by instances -> " PUBLIC_IPS
+
+        # add the networking
+        cat >>/etc/eucalyptus/eucalyptus.conf <<EOF
+
+# Cloud on a single machine config
+VNET_MODE="MANAGED-NOVLAN"
+VNET_PRIVINTERFACE="br0"
+VNET_PUBINTERFACE="${MAIN_IFACE}"
+VNET_BRIDGE="br0"
+VNET_SUBNET="172.16.128.0"
+VNET_NETMASK="255.255.128.0"
+VNET_DNS="8.8.8.8"
+VNET_ADDRSPERNET="16"
+VNET_PUBLICIPS="$PUBLIC_IPS"
+VNET_DHCPDAEMON="/usr/sbin/dhcpd41"
+EOF
 fi
 
-# workaround for EUCA-2049 (-i isn't obeyed): all interfaces going down
-IFACES="`ifconfig |sed 's/[ \t].*//;/^$/d;/lo/d;/br1/d'`"
-for x in $IFACES; do
-        ifdown $x
-done
+# Setup SSH known_hosts
+ssh-keyscan 172.16.0.1 $FE_HOST >> /root/.ssh/known_hosts 
 
 # Initialize Eucalyptus
 euca_conf --initialize
@@ -175,9 +205,11 @@ done
 sleep 3
 
 # workaround for EUCA-2049 (-i isn't obeyed): all interfaces comes up now
-for x in $IFACES; do
-        ifup $x
-done
+if [ "$SELFCONTAINED" = "Y" ]; then
+        for x in $IFACES; do
+                ifup $x
+        done
+fi
 
 # Register components
 euca_conf --skip-scp-hostcheck --register-walrus --partition walrus --host $FE_HOST --component walrus-single
