@@ -23,6 +23,7 @@ usage () {
         echo "   -w      configured to be world accessible (will ask about IPs etc ...)"
         echo "   -V      version"
         echo
+        echo
 
         exit 0
 }
